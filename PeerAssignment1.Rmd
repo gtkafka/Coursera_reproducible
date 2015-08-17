@@ -1,0 +1,177 @@
+---
+title: "Peer 1 Assignment"
+output: html_document
+---
+
+###Preliminaries
+
+```{r}
+library(knitr)
+opts_chunk$set(echo = TRUE, results = "hold")
+
+library(data.table)
+library(ggplot2)
+```
+
+###Loading and preprocessing the data
+
+The data in the *repdata-data-activity.zip* comes from a step counter that gathers personal data at 5 minute intervals throughout the day. The data was collected in October and Novemeber of 2012.
+
+1.Loading the data
+
+```{r}
+sdat <- read.csv(unz('repdata-data-activity.zip', 'activity.csv'), header =TRUE)
+```
+
+2. Cleaning the Data
+
+```{r}
+sdat$date <- as.Date(sdat$date, format = "%Y-%m-%d")
+sdat$interval <- as.factor(sdat$interval)
+```
+
+###Number of steps taken in a day
+
+1. We can aggregate the number of steps taken per day.
+
+
+```{r}
+daily_steps <- aggregate(steps ~ date, sdat, sum)
+colnames(daily_steps) <- c("date", "steps")
+head(daily_steps)
+```
+
+2. Histogram of Number of steps taken per day.
+
+```{r}
+ggplot(daily_steps, aes(x = steps)) + 
+  geom_histogram(fill = "red", binwidth = 2000) +
+  labs(title = "Histogram of Daily Steps",
+       x = "Number of Daily Steps", y = "Number of Days")
+
+```
+
+3. The mean and median of steps taken per day.
+
+```{r}
+steps_mean   <- round(mean(daily_steps$steps, na.rm=TRUE))
+steps_median <- median(daily_steps$steps, na.rm=TRUE)
+```
+
+```{r, echo=FALSE}
+steps_mean
+steps_median
+```
+
+###What is the average daily activity pattern?
+
+1. 
+
+```{r}
+dt_steps <- aggregate(x=list(steps=sdat$steps), by = list(interval = sdat$interval), FUN=mean, na.rm=TRUE)
+
+head(dt_steps)
+dt_steps$interval <- 
+        as.integer(levels(dt_steps$interval)[dt_steps$interval])
+colnames(dt_steps) <- c("interval", "steps")
+```
+
+We can now plot the number of steps taken in a 5 minute interval.
+
+```{r}
+ggplot(dt_steps, aes(x=interval, y=steps)) +   
+        geom_line(color="blue", size=1) +  
+        labs(title="Average Daily Activity Pattern", x="Time x 5 [min]", y="Number of steps")
+```
+
+2. The maximum number of steps can be readily calculated.
+
+```{r}
+max_steps <- dt_steps[which.max(dt_steps$steps),]
+```
+```{r,echo=F}
+echo=FALSE
+max_steps$steps
+```
+
+##Imputting missing values
+
+1. The number of missing *NA* values is simply:
+
+```{r}
+na_steps <- sum(is.na(sdat$steps))
+```
+
+```{r, echo=FALSE}
+na_steps
+```
+
+2. Fill the data with the **fill_na** function which utilizes **mapply**. A filled set is returned that replaces all *NA* values with the average value for that interval calculated in *dt_steps*.
+
+```{r}
+fill_na <- function(steps, interval){
+  filled <- NA
+  if (!is.na(steps))
+    filled <- c(steps)
+  else
+    filled <- (dt_steps[dt_steps$interval==interval, "steps"])
+  return(filled)
+}
+```
+
+3. A new data set *sData* has *NA* replaced with the averages.
+
+```{r}
+sData <- sdat
+sData$steps <-mapply(fill_na, sData$steps, sData$interval)
+```
+
+```{r}
+head(sData)
+```
+
+4. Plot new histogram with filled-in values.
+
+```{r}
+sData_sum <- aggregate(steps ~ date, sData, sum)
+ggplot(sData_sum, aes(x = steps)) + 
+  geom_histogram(fill = "red", binwidth = 2000) +
+  labs(title = "Histogram of Daily Steps",
+       x = "Number of Daily Steps", y = "Number of Days")
+
+sD <- tapply(sData$steps, sData$date, FUN=sum)
+mean(sD)
+median(sD)
+```
+
+##Weekdays vs. Weekends
+
+1. We now write a function that determines wheter or not a given day is a weekday or weekend.
+
+```{r}
+whatday <- function(date) {
+    day <- weekdays(date)
+    if (day %in% c("Sunday", "Saturday"))
+        return("weekend")
+    else 
+        return("weekday")
+}
+
+```
+
+2. Append either weekend or weekday to the data frame.
+
+```{r}
+sData$date <- as.Date(sData$date)
+sData$day <- sapply(sData$date, FUN=whatday)
+```
+
+3. Plot two histograms with a filter on weekday or weekend.
+
+```{r}
+averages <- aggregate(steps ~ interval + day, data=sData, mean)
+averages$interval <- 
+        as.integer(levels(averages$interval)[averages$interval])
+ggplot(averages, aes(interval, steps)) + geom_line() + facet_grid(day ~ .) +
+    xlab("Time x 5 [min]") + ylab("Number of steps")
+```
